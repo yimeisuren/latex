@@ -1,0 +1,398 @@
+\appendix
+
+
+\chapter{主程序}\label{ch:主程序}
+\begin{lstlisting}[label={lst:lstlisting}]
+#include <limits>
+#include <set>
+#include <map>
+#include <queue>
+#include <string>
+#include <vector>
+#include <fstream>
+#include <iostream>
+#include <algorithm>
+#include "GraphElements.h"
+#include "Graph.h"
+#include "DijkstraShortestPathAlg.h"
+#include "YenTopKShortestPathsAlg.h"
+using namespace std;
+
+void testDijkstraGraph() {
+    Graph *my_graph_pt = new Graph("C:\\Users\\24563\\Desktop\\新建文件夹\\k-shortest-paths-cpp-version\\data\\test_15");
+    DijkstraShortestPathAlg shortest_path_alg(my_graph_pt);
+    BasePath *result = shortest_path_alg.get_shortest_path(my_graph_pt->get_vertex(0), my_graph_pt->get_vertex(14));
+    result->PrintOut(cout);
+}
+
+void testYenAlg(int source, int sink, int k, string filename) {
+    Graph my_graph(filename);
+
+    YenTopKShortestPathsAlg yenAlg(my_graph, my_graph.get_vertex(source), my_graph.get_vertex(sink));
+
+
+    int i = 0;
+    while (yenAlg.has_next()) {
+        ++i;
+        cout << "从结点" << source << "到结点" << sink << "的第" << i << "最短路为:" << endl;
+        yenAlg.next()->PrintOut(cout);
+        if (i == k) {
+            break;
+        }
+    }
+}
+
+int main(...) {
+    cout << "请输入待求k最短路的起点和终点以及k值" << endl;
+    int source;
+    int sink;
+    int k;
+    cin >> source >> sink >> k;
+    cout << "请输入数据文件所在的文件路径" << endl;
+    string filepath = "C:\\Users\\24563\\Desktop\\新建文件夹\\k-shortest-paths-cpp-version\\data\\test_1";
+    cin >> filepath;
+    testYenAlg(source, sink, k, filepath);
+    int flag;
+    cout << "输入任意键退出" << endl;
+    cin >> flag;
+    return 0;
+}
+
+
+\end{lstlisting}
+
+
+\chapter{K最短路实现}\label{ch:k最短路实现}
+\begin{lstlisting}[
+    language=C++,
+    basicstyle=\ttfamily,
+    breaklines=true,
+    label={lst:lstlisting2}]
+#include <set>
+#include <map>
+#include <queue>
+#include <vector>
+#include "GraphElements.h"
+#include "Graph.h"
+#include "DijkstraShortestPathAlg.h"
+#include "YenTopKShortestPathsAlg.h"
+
+using namespace std;
+
+void YenTopKShortestPathsAlg::clear() {
+    m_nGeneratedPathNum = 0;
+    m_mpDerivationVertexIndex.clear();
+    m_vResultList.clear();
+    m_quPathCandidates.clear();
+}
+
+void YenTopKShortestPathsAlg::_init() {
+    clear();
+    if (m_pSourceVertex != NULL && m_pTargetVertex != NULL) {
+        BasePath *pShortestPath = get_shortest_path(m_pSourceVertex, m_pTargetVertex);
+        if (pShortestPath != NULL && pShortestPath->length() > 1) {
+            m_quPathCandidates.insert(pShortestPath);
+            m_mpDerivationVertexIndex[pShortestPath] = m_pSourceVertex;
+        }
+    }
+}
+
+BasePath *YenTopKShortestPathsAlg::get_shortest_path(BaseVertex *pSource, BaseVertex *pTarget) {
+    DijkstraShortestPathAlg dijkstra_alg(m_pGraph);
+    return dijkstra_alg.get_shortest_path(pSource, pTarget);
+}
+
+bool YenTopKShortestPathsAlg::has_next() {
+    return !m_quPathCandidates.empty();
+}
+
+BasePath *YenTopKShortestPathsAlg::next() {
+    //1. Prepare for removing vertices and arcs
+    BasePath *cur_path = *(m_quPathCandidates.begin());//m_quPathCandidates.top();
+
+    //m_quPathCandidates.pop();
+    m_quPathCandidates.erase(m_quPathCandidates.begin());
+    m_vResultList.push_back(cur_path);
+
+    int count = m_vResultList.size();
+
+    BaseVertex *cur_derivation_pt = m_mpDerivationVertexIndex.find(cur_path)->second;
+    vector<BaseVertex *> sub_path_of_derivation_pt;
+    cur_path->SubPath(sub_path_of_derivation_pt, cur_derivation_pt);
+    int sub_path_length = sub_path_of_derivation_pt.size();
+
+    //2. Remove the vertices and arcs in the graph
+    for (int i = 0; i < count - 1; ++i) {
+        BasePath *cur_result_path = m_vResultList.at(i);
+        vector<BaseVertex *> cur_result_sub_path_of_derivation_pt;
+
+        if (!cur_result_path->SubPath(cur_result_sub_path_of_derivation_pt, cur_derivation_pt)) continue;
+
+        if (sub_path_length != cur_result_sub_path_of_derivation_pt.size()) continue;
+
+        bool is_equal = true;
+        for (int i = 0; i < sub_path_length; ++i) {
+            if (sub_path_of_derivation_pt.at(i) != cur_result_sub_path_of_derivation_pt.at(i)) {
+                is_equal = false;
+                break;
+            }
+        }
+        if (!is_equal) continue;
+
+        //
+        BaseVertex *cur_succ_vertex = cur_result_path->GetVertex(sub_path_length + 1);
+        m_pGraph->remove_edge(make_pair(cur_derivation_pt->getID(), cur_succ_vertex->getID()));
+    }
+
+    //2.1 remove vertices and edges along the current result
+    int path_length = cur_path->length();
+    for (int i = 0; i < path_length - 1; ++i) {
+        m_pGraph->remove_vertex(cur_path->GetVertex(i)->getID());
+        m_pGraph->remove_edge(make_pair(cur_path->GetVertex(i)->getID(), cur_path->GetVertex(i + 1)->getID()));
+    }
+
+    //3. Calculate the shortest tree rooted at target vertex in the graph
+    DijkstraShortestPathAlg reverse_tree(m_pGraph);
+    reverse_tree.get_shortest_path_flower(m_pTargetVertex);
+
+    //4. Recover the deleted vertices and update the cost and identify the new candidates results
+    bool is_done = false;
+    for (int i = path_length - 2; i >= 0 && !is_done; --i) {
+        //4.1 Get the vertex to be recovered
+        BaseVertex *cur_recover_vertex = cur_path->GetVertex(i);
+        m_pGraph->recover_removed_vertex(cur_recover_vertex->getID());
+
+        //4.2 Check if we should stop continuing in the next iteration
+        if (cur_recover_vertex->getID() == cur_derivation_pt->getID()) {
+            is_done = true;
+        }
+
+        //4.3 Calculate cost using forward star form
+        BasePath *sub_path = reverse_tree.update_cost_forward(cur_recover_vertex);
+
+        //4.4 Get one candidate result if possible
+        if (sub_path != NULL) {
+            ++m_nGeneratedPathNum;
+
+            //4.4.1 Get the prefix from the concerned path
+            double cost = 0;
+            reverse_tree.correct_cost_backward(cur_recover_vertex);
+
+            vector<BaseVertex *> pre_path_list;
+            for (int j = 0; j < path_length; ++j) {
+                BaseVertex *cur_vertex = cur_path->GetVertex(j);
+                if (cur_vertex->getID() == cur_recover_vertex->getID()) {
+                    //j = path_length;
+                    break;
+                } else {
+                    cost += m_pGraph->get_original_edge_weight(cur_path->GetVertex(j), cur_path->GetVertex(1 + j));
+                    pre_path_list.push_back(cur_vertex);
+                }
+            }
+            //
+            for (int j = 0; j < sub_path->length(); ++j) {
+                pre_path_list.push_back(sub_path->GetVertex(j));
+            }
+
+            //4.4.2 Compose a candidate
+            double weight_cost = cost + sub_path->Weight();
+            delete sub_path;
+            sub_path = new Path(pre_path_list, weight_cost);
+
+            //4.4.3 Put it in the candidate pool if new
+            if (m_mpDerivationVertexIndex.find(sub_path) == m_mpDerivationVertexIndex.end()) {
+                m_quPathCandidates.insert(sub_path);
+                m_mpDerivationVertexIndex[sub_path] = cur_recover_vertex;
+            }
+        }
+
+        //4.5 Restore the edge
+        BaseVertex *succ_vertex = cur_path->GetVertex(i + 1);
+        m_pGraph->recover_removed_edge(make_pair(cur_recover_vertex->getID(), succ_vertex->getID()));
+
+        //4.6 Update cost if necessary
+        double cost_1 = m_pGraph->get_edge_weight(cur_recover_vertex, succ_vertex) + reverse_tree.get_start_distance_at(succ_vertex);
+
+        if (reverse_tree.get_start_distance_at(cur_recover_vertex) > cost_1) {
+            reverse_tree.set_start_distance_at(cur_recover_vertex, cost_1);
+            reverse_tree.set_predecessor_vertex(cur_recover_vertex, succ_vertex);
+            reverse_tree.correct_cost_backward(cur_recover_vertex);
+        }
+    }
+
+    //5. Restore everything
+    m_pGraph->recover_removed_edges();
+    m_pGraph->recover_removed_vertices();
+
+    return cur_path;
+}
+
+void YenTopKShortestPathsAlg::get_shortest_paths(BaseVertex *pSource, BaseVertex *pTarget, int top_k, vector<BasePath *> &result_list) {
+    m_pSourceVertex = pSource;
+    m_pTargetVertex = pTarget;
+
+    _init();
+    int count = 0;
+    while (has_next() && count < top_k) {
+        next();
+        ++count;
+    }
+
+    result_list.assign(m_vResultList.begin(), m_vResultList.end());
+}
+\end{lstlisting}
+
+
+\chapter{时间拓展图转化为静态网络}\label{ch:时间拓展图转化为静态网络}
+\begin{lstlisting}[
+    language=C++,
+    basicstyle=\ttfamily,
+    breaklines=true,
+    label={lst:lstlisting4}]
+
+struct Edge {
+int to;
+vector<int> edgeWeight;
+explicit Edge(int to) {
+this->to = to;
+}
+};
+void staticGraph() {
+int vertexCounts;
+int edgeCounts;
+cout << "请输入图中的顶点数和边数: ";
+cin >> vertexCounts >> edgeCounts;
+vector<vector<Edge>> graph(vertexCounts);
+int from, to;
+int weight;
+while (edgeCounts--) {
+cin >> from >> to;
+graph[from].emplace_back(to);
+int i = 0;
+while (i++ < seriesCount) {
+cin >> weight;
+graph[from].back()
+.edgeWeight.push_back(weight);
+}
+}
+int exVertexCounts = vertexCounts * seriesCount;
+vector<vector<int>>matrix(exVertexCounts, vector<int>(exVertexCounts, -1));
+for (int i = 0; i < graph.size(); i++) {
+for (int j = 0; j < graph[i].size(); ++j) {
+int from = i;
+int to = graph[i][j].to;
+for (int k = 0; k < graph[i][j].edgeWeight.size(); ++k) {
+int weight = graph[i][j].edgeWeight[k];
+matrix[from * seriesCount + k][to * seriesCount + (k + weight) % seriesCount] = weight;
+}
+}
+}
+for (int i = 0; i < graph.size(); i++) {
+for (const auto &item : graph[i]) {
+cout << i << "->" << item.to << ":";
+for (int cost : item.edgeWeight) {
+cout << cost << " ";
+}
+cout << endl;
+}
+}
+for (auto &i : matrix) {
+for (int j : i) {
+cout << j << " ";
+}
+cout << endl;
+}
+}
+\end{lstlisting}
+
+
+\chapter{路网模拟实验代码}\label{ch:路网模拟实验代码}
+\begin{lstlisting}[
+    language=Python,
+    morekeywords={as},
+    label={lst:lstlisting8}]
+
+import osmnx as ox
+import pandas as pd
+import networkx as nx
+import numpy as np
+
+G = ox.graph_from_place('Queens, New York, USA', network_type='drive')
+remove_list = []
+num_nodes = len(G.nodes)
+for node in G.nodes:
+reach = len(nx.descendants(G, node))
+if reach < num_nodes / 10:
+remove_list.append(node)
+for node in remove_list:
+G.remove_node(node)
+G = nx.convert_node_labels_to_integers(G, label_attribute='old_node_ID')
+ox.plot_graph(G)
+
+G = ox.add_edge_speeds(G)
+G = ox.speed.add_edge_travel_times(G, precision=1)
+
+speed_df = pd.read_csv('../data/streetInfo.csv')
+speed_df = speed_df[['osm_way_id', 'hour', 'speed']]
+speed_df.head()
+
+speed_dict = dict([((t.osm_way_id, t.hour),t.speed) for t in speed_df.itertuples()])
+speed_dict[(5029221, 12)]
+
+for edge in G.edges:
+    edge_obj = G[edge[0]][edge[1]][edge[2]]
+    wayid = edge_obj['osmid']
+try:
+    speed = speed_dict[wayid] * 1.60934
+    distance = edge_obj['length'] / 1000
+    travel_time = distance / speed * 60
+except:
+    travel_time = edge_obj['travel_time'] / 60
+    G[edge[0]][edge[1]][edge[2]]['um_travel_time'] = travel_time
+# %%
+num_nodes = len(G.nodes)
+shortest_time = np.zeros((num_nodes, num_nodes))
+path_generator = nx.shortest_path_length(G, weight='um_travel_time')
+for origin_data in path_generator:
+    origin = origin_data[0]
+    dist_dict = origin_data[1]
+    for destination in dist_dict:
+        shortest_time[origin, destination] = dist_dict[destination]
+\end{lstlisting}
+
+
+%\newtheorem{theorem}{定理}
+%\begin{theorem}
+%    欧几里得第二定理(素数有无穷多个)\\
+%    证明：用反证法。假设素数有有限个($N$个)，记为$p_1,p_2,\dots,p_N$。则我们构造一个新的数，
+%    \[
+%        n=p_1p_2\dots p_N+1.
+%    \]
+%    由于$p_i,i=1,2,\dots,N$为素数，则一定不为$1$。于是对于任意的$p_i,i=1,2,\dots, N$，有
+%    \[
+%        p_i\not|n
+%    \]
+%    这表明，要么$n$本身为素数，要么$n$为合数，但是存在$p_1,p_2,\dots,p_N$之外的其他素数能够将$n$进行素因子分解。
+%    不管哪种情况，都表明存在更多的素数。定理得证。\qed
+%\end{theorem}
+%
+%
+%\chapter{$\sqrt{2}$是无理数的证明}
+%\begin{theorem}
+%    $\sqrt{2}$是无理数。\\
+%    证明：用反证法。假设$\sqrt{2}$是有理数，则可表示为两个整数的商，即$\exists p,q, q\ne0$
+%    \[
+%        \sqrt{2}=\frac{p}{q}
+%    \]
+%    不失一般性，我们假设$p,q$是既约的，即$\gcd(p,q)=1$。对上式两边平方可得\\
+%    \begin{align*}
+%        2& =\frac{p^2}{q^2}\\
+%        p^2&=2q^2.
+%    \end{align*}
+%    表明$p^2$为偶数，因此$p$为偶数，记$p=2m$。则
+%    \begin{align*}
+%        p^2&=4m^2=2q^2\\
+%        q^2&=2m^2.
+%    \end{align*}
+%    表明$q$也为偶数，因此它们有公共因子$2$。这与它们既约的假设矛盾。定理得证。\qed
+%\end{theorem}

@@ -1,0 +1,62 @@
+\documentclass[algorithmlist, AutoFakeBold, figurelist,tablelist, nomlist, masters]{seuthesix}
+\usepackage{algorithmicx}
+\usepackage{listings}
+\usepackage{color}
+\usepackage{float} %设置图片浮动位置的宏包
+\usepackage{subfigure} %插入多图时用子图显示的宏包
+\usepackage[table,xcdraw,dvipsnames]{xcolor}
+\usepackage{chngpage}
+\usepackage{array}
+\usepackage{algpseudocode}
+\usepackage{mathptmx}
+\usepackage{svg} % 需使用包
+
+%代码高亮设置:listings包的设置
+\lstset{
+    language=C++, % 设置语言
+    numberstyle=\tiny\color{gray},                       % 设定行号格式
+    showstringspaces=false,                              % 不显示字符串中的空格
+    columns=flexible,
+    numbers=left, % 显示行号在左边
+    numbersep=2em, % 设置行号的具体位置
+    numberstyle=\footnotesize, % 缩小行号
+    backgroundcolor=\color[RGB]{247,246,243},            % 设定背景颜色
+    breaklines=true, % 自动换行
+    basicstyle=\ttfamily, % 设置字体族
+    stringstyle=\color{green!50!black}, % 设置字符串样式
+    keywordstyle=\color{purple}\bfseries,
+    morekeywords={},
+    identifierstyle=\color[RGB]{55,53,47},
+    commentstyle=\color{brown!80!black}                                    % 设置语言
+}
+\setlength{\parskip}{2em}
+
+\begin{document}
+%摘要目录等
+    \include{chap/01-abstract}
+    \include{chap/02-englishabst}
+    \include{chap/03-tableofcontents}
+%    \setnomname{术语与符号约定}
+%    \listofothers
+
+%     正文部分
+    \mainmatter
+    \include{chap/04-chap1}
+    \include{chap/05-chap2}
+    \include{chap/06-chap3}
+    \include{chap/07-chap4}
+    \include{chap/08-chap5}
+    \include{chap/09-chap6}
+    \include{chap/10-chap7}
+%    参考文献
+    \bibliographystyle{gbt7714-numerical}
+    \bibliography{seuthesix}  % 告诉编译器参考文献所在文件
+%    附录
+    \include{chap/11-appendix}
+    \thesisbib{seuthesix}
+%   致谢
+    \include{chap/12-ack}
+%    \include{chap/13-resume}
+    \newcommand{\cleardoublepage}{\clearpage}
+
+\end{document}
